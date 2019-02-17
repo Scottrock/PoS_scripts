@@ -103,6 +103,8 @@ for chain in assetchains:
 src_index = selectRangeInt(1,len(assetChains),"Select source chain: ")
 src_chain = assetChains[src_index-1]
 rpc_connection_sourcechain = def_credentials(src_chain)
+rpc_connection_sourcechain1 = def_credentials(src_chain)
+rpc_connection_sourcechain2 = def_credentials(src_chain)
 
 
 ccid=ccids[src_index-1]
@@ -121,9 +123,10 @@ else:
     print('No other asset chains with the same cc_id to migrate to, exiting')
     exit(0)
 rpc_connection_destinationchain = def_credentials(assetChains[dest_chain-1])
+rpc_connection_destinationchain1 = def_credentials(assetChains[dest_chain-1])
 
 rpc_connection_kmdblockchain = def_credentials('KMD')
-migrations_amount = selectRangeInt(1,5000,"How many migrations?: ")
+migrations_amount = selectRangeInt(1,7778,"How many migrations?: ")
 target_migrations = migrations_amount
 balance=rpc_connection_sourcechain.getbalance()
 max_per_loop=balance/migrations_amount
@@ -155,7 +158,6 @@ def input_thread(BRK):
 def create_export_txs(rpc_connection_source, export_queue, txns_to_send):
 	while True:
 		for i in range(txns_to_send):
-		#while True:
 			if BRK: break
 			raw_transaction = rpc_connection_source.createrawtransaction([], {address: amount})
 			while True:
@@ -163,8 +165,8 @@ def create_export_txs(rpc_connection_source, export_queue, txns_to_send):
 					export_data = rpc_connection_source.migrate_converttoexport(raw_transaction, rpc_connection_destinationchain.getinfo()["name"])
 					break
 				except Exception as e:
-					print(e)
-					time.sleep(1)
+					print("Src RPC Busy - waiting to convert to export")
+					time.sleep(10)
 					break
 			export_raw = export_data["exportTx"]
 			export_funded_data = rpc_connection_source.fundrawtransaction(export_raw)
@@ -176,20 +178,27 @@ def create_export_txs(rpc_connection_source, export_queue, txns_to_send):
 					sent_tx = rpc_connection_source.sendrawtransaction(signed_hex["hex"])
 					break
 				except Exception as e:
-					print(e)
-					time.sleep(1)
+					print("Send raw source busy")
+					time.sleep(10)
 					break
 			if len(sent_tx) != 64:
 				print(signed_hex)
 				print(sent_tx)
 				print("Export TX not successfully created")
-				time.sleep(1)
+				time.sleep(10)
 			else:
 				data_for_queue = {"tx_id": sent_tx, "payouts": payouts, "signed_hex": signed_hex["hex"]}
-				export_queue.put(data_for_queue)
+				while True:
+					try:
+						export_queue.put(data_for_queue)
+						break
+					except:
+						time.sleep(20)
+						continue
+					break
 				global BROADCASTED_EXPORT_TXS
 				BROADCASTED_EXPORT_TXS += 1
-				time.sleep(0.03)
+				time.sleep(0.25)
 		break
 
 def create_import_txs(rpc_connection, queue_with_exports, import_queue):
@@ -199,13 +208,14 @@ def create_import_txs(rpc_connection, queue_with_exports, import_queue):
 			try:
 				import_tx = rpc_connection.migrate_createimporttransaction(data_from_queue["signed_hex"], data_from_queue["payouts"])
 			except Exception as e:
-				time.sleep(1)
+				print(e)
+				time.sleep(20)
 				pass
 			else:
 				import_queue.put(import_tx)
 				global IMPORT_TXS_CREATED
 				IMPORT_TXS_CREATED += 1
-				time.sleep(0.05)
+				time.sleep(0.2)
 				break
 		if IMPORT_TXS_CREATED == BROADCASTED_EXPORT_TXS and IMPORT_TXS_CREATED > 0: break
 
@@ -216,13 +226,14 @@ def migrate_import_txs(rpc_connection, import_txs_queue, migrated_import_txs_que
 			try:
 				complete_tx = rpc_connection.migrate_completeimporttransaction(import_tx)
 			except Exception as e:
-				time.sleep(1)
+				print(e)
+				time.sleep(10)
 				pass
 			else:
 				migrated_import_txs_queue.put(complete_tx)
 				global IMPORT_TXS_COMPLETED
 				IMPORT_TXS_COMPLETED += 1
-				time.sleep(0.05)
+				time.sleep(0.2)
 				break
 		if IMPORT_TXS_COMPLETED == BROADCASTED_EXPORT_TXS and IMPORT_TXS_COMPLETED > 0: break
 
@@ -232,13 +243,14 @@ def broadcast_on_destinationchain(rpc_connection, complete_tx_queue, dest_tx_que
 		while True:
 			try:
 				sent_itx = rpc_connection.sendrawtransaction(complete_tx)
-			except:
-				time.sleep(5)
+			except Exception as e:
+				print(e)
+				time.sleep(2.5)
 			else:
 				dest_tx_queue.put(sent_itx)
 				global BROADCASTED_IMPORT_TXS
 				BROADCASTED_IMPORT_TXS += 1
-				time.sleep(1)
+				time.sleep(0.5)
 				break
 		if BROADCASTED_IMPORT_TXS == BROADCASTED_EXPORT_TXS and BROADCASTED_IMPORT_TXS > 0: break
 
@@ -254,7 +266,7 @@ def check_if_confirmed_export(rpc_connection, queue_to_check, queue_with_confirm
 				time.sleep(0.05)
 				break
 			else:
-				time.sleep(10)
+				time.sleep(20)
 		if CONFIRMED_EXPORT_TXS == BROADCASTED_EXPORT_TXS and CONFIRMED_EXPORT_TXS > 0: break
 
 
@@ -267,7 +279,7 @@ def check_if_confirmed_import(rpc_connection, queue_to_check, queue_with_confirm
 					queue_with_confirmed.put(data_from_queue)
 					global CONFIRMED_IMPORT_TXS
 					CONFIRMED_IMPORT_TXS += 1
-					time.sleep(0.05)
+					time.sleep(0.25)
 					break
 				else:
 					time.sleep(10)
@@ -281,9 +293,8 @@ def print_imports():
 	t0 = time.time()
 	global IMPORT_TXS_COMPLETED
 	imports_counter = IMPORT_TXS_COMPLETED
-	time.sleep(5)
+	time.sleep(2.5)
 	while True:
-		#time.sleep(60)
 		if CONFIRMED_IMPORT_TXS < BROADCASTED_EXPORT_TXS:
 			t1 = time.time()
 			if imports_counter == 0:
@@ -304,7 +315,7 @@ def print_imports():
 			print(str((t1 - t0) / 60) + " minutes elapsed")
 			print(str(CONFIRMED_IMPORT_TXS) + " migrations complete")
 			print(str(CONFIRMED_IMPORT_TXS / (t1 - t0)) + " migrations/second speed\n")
-			time.sleep(60)
+			time.sleep(10)
 		else:
 			break
 
@@ -328,12 +339,12 @@ def is_finished():
 
 
 # queue of export transactions
-export_tx_queue = queue.Queue()
+export_tx_queue = queue.Queue(maxsize=777)
 # queue with confirmed export transactions
-confirmed_export_queue = queue.Queue()
+confirmed_export_queue = queue.Queue(maxsize=777)
 # queue with import transactions
 import_tx_queue = queue.Queue()
-# queue with complee import transactions
+# queue with complete import transactions
 migrated_import_tx_queue = queue.Queue()
 # queue with imports broadcasted on destination chain
 broadcasted_on_dest_queue = queue.Queue()
@@ -341,39 +352,39 @@ broadcasted_on_dest_queue = queue.Queue()
 confirmed_on_dest_queue = queue.Queue()
 
 # thread to interupt exports
-thread_new_txns = Thread(target=input_thread, args=(BRK,))
+thread_new_txns = Thread(name = 'service-thread', target=input_thread, args=(BRK,))
 list_threads.append(thread_new_txns)
 
 # thread which creating export transactions
-thread_export_txs = Thread(target=create_export_txs, args=(rpc_connection_sourcechain, export_tx_queue, target_migrations))
+thread_export_txs = Thread(name = 'src_exp_create', target=create_export_txs, args=(rpc_connection_sourcechain2, export_tx_queue, target_migrations))
 list_threads.append(thread_export_txs)
 
 # thread which waiting for 1 confirmation on the source chain (estabilishing independed rpc proxy for each thread)
-thread_wait_export_confirmation = Thread(target=check_if_confirmed_export, args=(rpc_connection_sourcechain, export_tx_queue, confirmed_export_queue,))
+thread_wait_export_confirmation = Thread(name = 'src_exp_cnfrm', target=check_if_confirmed_export, args=(rpc_connection_sourcechain1, export_tx_queue, confirmed_export_queue,))
 list_threads.append(thread_wait_export_confirmation)
 
 # thread which creating import transactions
-thread_import_txs = Thread(target=create_import_txs, args=(rpc_connection_sourcechain, confirmed_export_queue, import_tx_queue,))
+thread_import_txs = Thread(name = 'src_imp_create', target=create_import_txs, args=(rpc_connection_sourcechain, confirmed_export_queue, import_tx_queue,))
 list_threads.append(thread_import_txs)
 
 # thread which complete import txs on KMD chain
-thread_complete_txs = Thread(target=migrate_import_txs, args=(rpc_connection_kmdblockchain, import_tx_queue, migrated_import_tx_queue))
+thread_complete_txs = Thread(name = 'KMD_cmplt_imprt', target=migrate_import_txs, args=(rpc_connection_kmdblockchain, import_tx_queue, migrated_import_tx_queue))
 list_threads.append(thread_complete_txs)
 
 # thread which trying to broadcast imports on destination chain
-thread_broadcast_destination = Thread(target=broadcast_on_destinationchain, args=(rpc_connection_destinationchain, migrated_import_tx_queue, broadcasted_on_dest_queue))
+thread_broadcast_destination = Thread(name = 'dst_brdcst', target=broadcast_on_destinationchain, args=(rpc_connection_destinationchain, migrated_import_tx_queue, broadcasted_on_dest_queue))
 list_threads.append(thread_broadcast_destination)
 
 # thread which waiting for 1 confirmation on destination chain
-thread_wait_import_confirmation = Thread(target=check_if_confirmed_import, args=(rpc_connection_destinationchain, broadcasted_on_dest_queue, confirmed_on_dest_queue,))
+thread_wait_import_confirmation = Thread(name = 'dst_cnfrm', target=check_if_confirmed_import, args=(rpc_connection_destinationchain1, broadcasted_on_dest_queue, confirmed_on_dest_queue,))
 list_threads.append(thread_wait_import_confirmation)
 
 # printer thread
-printer_thread = Thread(target=print_imports)
+printer_thread = Thread(name = 'printer_thread', target=print_imports)
 list_threads.append(printer_thread)
 
 # thread monitoring completion
-thread_finished = Thread(target=is_finished)
+thread_finished = Thread(name = 'service_exit_thread', target=is_finished)
 list_threads.append(thread_finished)
 
 for i in list_threads: i.start()
