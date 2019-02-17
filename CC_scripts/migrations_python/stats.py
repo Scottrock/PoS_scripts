@@ -69,7 +69,6 @@ def def_credentials(chain):
 CHAIN = input('Please specify chain: ')
 ADDRESS = 'RXL3YXG2ceaB6C5hfJcN4fvmLH2C34knhA'
 rpc_connection = def_credentials(CHAIN)
-
 getinfo_result = rpc_connection.getinfo()
 height = getinfo_result['blocks']
 getnotarysendmany_result = rpc_connection.getnotarysendmany()
