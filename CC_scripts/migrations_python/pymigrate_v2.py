@@ -243,7 +243,8 @@ def broadcast_on_destinationchain(rpc_connection, complete_tx_queue, dest_tx_que
 		while True:
 			try:
 				sent_itx = rpc_connection.sendrawtransaction(complete_tx)
-			except:
+			except Exception as e:
+				print(e)
 				time.sleep(2.5)
 			else:
 				dest_tx_queue.put(sent_itx)
