@@ -56,19 +56,30 @@ def def_credentials(chain):
 def rpcThreads(chain, t0,):
     #Get the chain RPC credentials
     rpc_connection = def_credentials(chain)
+    myaddress = r_addr
+    my_ntz_count = 0
+    notes = ""
+    generate = ""
     #Run the RPC commands to get base info
     try:
         chain_getinfo = rpc_connection.getinfo()
-        unspents = pd.DataFrame(rpc_connection.listunspent())
-        notaries = rpc_connection.getnotarysendmany()
-        #Query the RPC replies and manipulate for the list
-        chain_balance = chain_getinfo ["balance"]
         chain_blocks = chain_getinfo ["blocks"]
         chain_last_blox = rpc_connection.getblock(str(chain_blocks))
+        chain_getmininginfo = rpc_connection.getmininginfo()
+        chain_validate_Radd = rpc_connection.validateaddress(myaddress)
+        unspents = pd.DataFrame(rpc_connection.listunspent())
+        notaries = rpc_connection.getnotarysendmany()
+        notaries[kmdntrzaddr]=0
+        #Query the RPC replies and manipulate for the list
+        chain_balance = chain_getinfo ["balance"]
         chain_ntzblk = chain_getinfo ["notarized"]
         chain_cncts = chain_getinfo ["connections"]
         blox_time = chain_last_blox ["time"]
+        if not chain_validate_Radd ["ismine"]: notes = "Import Privkey"
+        if chain_getmininginfo ["staking"]: generate = "Staking"
+        if chain_getmininginfo ["generate"]: generate = "Mining(" + str(chain_getmininginfo ["numthreads"]) + ")"
     except Exception as e:
+        generate = "error"
         chain_balance = "error"
         chain_blocks = 0
         chain_ntzblk = "error"
@@ -80,47 +91,48 @@ def rpcThreads(chain, t0,):
         unspents = []
         nnutxoset = []
     try:
-        transactions = pd.DataFrame(rpc_connection.listtransactions("",(chain_blocks - 100)))
-        nntransactions = transactions[transactions['address']==kmdntrzaddr]
-        if len(nntransactions) > 0:
-            nntxbyconfirms = nntransactions.sort_values('confirmations',ascending=True)
-            t1 = nntxbyconfirms['time'].values[0]
-            readabletime = to_readabletime(t0,t1)
+        if chain != 'KMD':
+            transactions = pd.DataFrame(rpc_connection.listtransactions("",(chain_blocks - 64)))
+            nntransactions = transactions[transactions['address']==kmdntrzaddr]
+            if len(nntransactions) > 0:
+                nntxbyconfirms = nntransactions.sort_values('confirmations',ascending=True)
+                t1 = nntxbyconfirms['time'].values[0]
+                readabletime = to_readabletime(t0,t1)
+                my_ntz_count = len(nntransactions)
+            else:
+                readabletime = ""
         else:
-            nntransactions = []
             readabletime = ""
+            my_ntz_count = ""
     except Exception as e:
         nntransactions = []
         readabletime = "error"
     if chain != 'KMD':
-        for block in range(2, chain_blocks):
-            getblock_result = rpc_connection.getblock(str(block), 2)
-            if len(getblock_result['tx'][0]['vout']) > 1:
-                vouts = getblock_result['tx'][0]['vout']
-                for vout in vouts[1:]:
-                    blah = vout['scriptPubKey']['addresses'][0]
-                    if blah in notaries:
-                        notaries[blah] += 1
-                    else:
-                        print('what')
-        all_ntrz_df = pd.DataFrame(notaries.items(), columns=['notary','count'])
-        all_ntrz_count = all_ntrz_df.sum(axis = 0, skipna=True) ['count']
-        #print(all_ntrz_df)
-        print(chain + " Total Notarizations in timeframe: " + str(all_ntrz_count))
-        addresses = rpc_connection.listaddressgroupings()
-        myaddress = addresses[0][0][0]
-        my_ntrz_count = all_ntrz_df.loc[all_ntrz_df['notary'] == myaddress, 'count'].sum()
-        pct_ntrz = (my_ntrz_count / all_ntrz_count) * 100
+        if myaddress in notaries:
+            for block in range(64, chain_blocks):
+                getblock_result = rpc_connection.getblock(str(block), 2)
+                if len(getblock_result['tx'][0]['vout']) > 1:
+                    vouts = getblock_result['tx'][0]['vout']
+                    for vout in vouts[1:]:
+                        blah = vout['scriptPubKey']['addresses'][0]
+                        if blah in notaries:
+                            notaries[blah] += 1
+                        else:
+                            print('what')
+            all_ntrz_df = pd.DataFrame(notaries.items(), columns=['notary','count'])
+            my_pymt_count = all_ntrz_df.loc[all_ntrz_df['notary'] == myaddress, 'count'].sum()
+            if my_pymt_count < 1: my_pymt_count = ""
+        else:
+            my_pymt_count = ""
     else:
-        pct_ntrz = ""
-        my_ntrz_count = 0
+        my_pymt_count = ""
     try:
         blocktime = to_readabletime(t0, blox_time,)
     except Exception as e:
         print(e)
     #Build and append list items
-    list = (chain,chain_balance,len(unspents),len(nnutxoset),my_ntrz_count,pct_ntrz,readabletime,chain_blocks,blocktime,chain_ntzblk,chain_cncts)
-    alt_list = (chain,chain_balance,len(unspents),chain_blocks,blocktime,chain_ntzblk,chain_cncts)
+    list = (chain,chain_balance,len(unspents),len(nnutxoset),my_pymt_count,my_ntz_count,readabletime,chain_blocks,blocktime,chain_ntzblk,chain_cncts)
+    alt_list = (chain,generate,chain_balance,len(unspents),chain_blocks,blocktime,chain_ntzblk,chain_cncts,notes)
     global tmpList
     tmpList.append(list)
     global alt_tmpList
@@ -152,10 +164,10 @@ def to_readabletime(t_zero, t_one,):
 
 def print_balance():
     now = datetime.datetime.now()
-    print("\nLatest stats " + (now.strftime("%Y-%m-%d %H:%M:%S")))
+    print("Latest stats " + (now.strftime("%Y-%m-%d %H:%M:%S")))
     t0 = time.time()
-    tableCol = ['ASSET','BALANCE','UTXO','nnUTXO','NOTR','PCT','NOTR_t','chnBLOX','BLOX_t','NtrzHT','CNCT']
-    alt_tableCol = ['ASSET','BALANCE','UTXO','chnBLOX','BLOX_t','NtrzHT','CNCT']
+    tableCol = ['ASSET','BALANCE','UTXO','nnUTXO','PYMTS','NOTR','NOTR_t','chnBLOX','BLOX_t','NtrzHT','CNCT']
+    alt_tableCol = ['ASSET','GEN','BALANCE','UTXO','chnBLOX','BLOX_t','NtrzHT','CNCT','NOTE']
     #Create the thread loops
     for chain in assetChains:
         process = Thread(target=rpcThreads, args=[chain, t0,])
@@ -171,7 +183,7 @@ def print_balance():
     pd.set_eng_float_format(accuracy=4, use_eng_prefix=True)
     #Assemble the table
     df = pd.DataFrame.from_records(tmpList, columns=tableCol)
-    if (df.sum(axis = 0, skipna=True) ['NOTR']) == 0:
+    if (df.sum(axis = 0, skipna=True) ['nnUTXO']) == 0:
         df = pd.DataFrame.from_records(alt_tmpList, columns=alt_tableCol)
     df.sort_values(by=['chnBLOX'], ascending=False, inplace=True)
     df = df.reset_index(drop=True)
@@ -229,6 +241,23 @@ except Exception as e:
     #print("Trying alternate location for file")
     with open(HOME + '/staked/assetchains.json') as file:
         assetchains = json.load(file)
+
+#Get the R addr from the config.ini
+try:
+    with open(HOME + '/StakedNotary/config.ini', 'r') as file:
+        for line in file:
+            l = line.rstrip()
+            if re.search('Radd', l):
+                r_addr = l.replace('Radd = ', '')
+except Exception as e:
+    #print(e)
+    #print("Trying alternate location for file")
+    with open(HOME + '/staked/config.ini', 'r') as file:
+        for line in file:
+            l = line.rstrip()
+            if re.search('Radd', l):
+                r_addr = l.replace('Radd =', '')
+print("\nRadd =" + r_addr)
 
 #Build the list of chains to report on
 if running('KMD') == True:
