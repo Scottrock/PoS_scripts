@@ -80,14 +80,14 @@ def migrate_import_transactions(rpc_connection, import_tx, complete_tx_list):
 def broadcast_on_destinationchain(rpc_connection, complete_tx, dest_tx_list):
     attempts = 0
     while True:
-        if attempts < 60:
+        if attempts < 100:
             try:
                 sent_itx = rpc_connection.sendrawtransaction(complete_tx)
             except Exception:
                 attempts = attempts + 1
                 print("Tried to broadcast " + str(attempts) + " times")
-                print("Will try to do it up to 60 times in total. Now rest for 15 seconds.")
-                time.sleep(15)
+                print("Will try to do it up to 100 times in total. Now rest for 60 seconds.")
+                time.sleep(60)
             else:
                 print("Transactinon broadcasted on destination chain")
                 dest_tx_list.append(sent_itx)
@@ -176,12 +176,14 @@ max_per_loop=balance/migrations_amount
 amount = selectRangeFloat(0,max_per_loop,"Amount of funds to send per migration (max: "+str(max_per_loop)+"): ")
 
 addresses = rpc_connection_destinationchain.listaddressgroupings()
-
-address = addresses[0][0][0]
-print('sending to '+address)
+try:
+    address = addresses[0][0][0]
+except Exception as e:
+    address = str(input('Address not found enter address: '))
 
 # SET ADDRESS HERE
 #address = "RHq3JsvLxU45Z8ufYS6RsDpSG4wi6ucDev"
+print('sending to '+address)
 
 t0 = time.time()
 
