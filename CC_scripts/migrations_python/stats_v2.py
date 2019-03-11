@@ -32,7 +32,7 @@ def colorize(string, color):
     else:
         return colors[color] + string + '\033[0m'
 
-# function to accept only integers in chain selection
+# function to accept only integers selection
 def selectRangeInt(low,high, msg):
     while True:
         try:
@@ -78,24 +78,44 @@ def def_credentials(chain):
 
     return (Proxy("http://%s:%s@127.0.0.1:%d" % (rpcuser, rpcpassword, int(rpcport))))
 
-# function to select assetchain at keyprompt
+# to select assetchain at keyprompt
 assetChains = []
 ccids = []
 ID=1
 HOME = os.environ['HOME']
+try:
+    with open(HOME + '/StakedNotary/assetchains.json') as file:
+        assetchains = json.load(file)
+except Exception as e:
+    print(e)
+    print("Trying alternate location for file")
+    with open(HOME + '/staked/assetchains.json') as file:
+        assetchains = json.load(file)
+print("")
 for chain in assetchains:
-    print(str(ID).rjust(3) + ' | ' + (chain['ac_name']+" ("+chain['ac_cc']+")").ljust(12))
+    print(str(ID).rjust(3) + ' | ' + (chain['ac_name']+" (ccid: "+chain['ac_cc']+")").ljust(12))
     ID+=1
     assetChains.append(chain['ac_name'])
     ccids.append(chain['ac_cc'])
-src_index = selectRangeInt(1,len(assetChains),"Select source chain: ")
+src_index = selectRangeInt(1,len(assetChains),"Select chain: ")
+print("")
 CHAIN = assetChains[src_index-1]
 
-#CHAIN = input('Please specify chain: ')
-ADDRESS = 'RXL3YXG2ceaB6C5hfJcN4fvmLH2C34knhA'
 rpc_connection = def_credentials(CHAIN)
 getinfo_result = rpc_connection.getinfo()
 height = getinfo_result['blocks']
+print("notarisation results are unreliable below a depth of 5")
+DEPTH_input = selectRangeInt(1,int((height / 5) - 5),"Please enter notarisation depth (5 to " + str(int(height / 5)) + "):  ")
+#input('Please enter notarisation depth: ')
+
+DEPTH = (int(DEPTH_input) * 5) + 1
+print("Blocks in consideration: " + str(DEPTH))
+print("")
+if DEPTH < 1: DEPTH == 5
+
+#CHAIN = input('Please specify chain: ')
+ADDRESS = 'RXL3YXG2ceaB6C5hfJcN4fvmLH2C34knhA'
+
 getnotarysendmany_result = rpc_connection.getnotarysendmany()
 iguana_json = rpc_connection.getiguanajson()
 notary_keys = {}
@@ -106,7 +126,7 @@ for notary in iguana_json['notaries']:
         addr = str(P2PKHBitcoinAddress.from_pubkey(x(notary[i])))
         notary_keys[addr] = i
 
-for block in range(2,height):
+for block in range(height - DEPTH,height):
     getblock_result = rpc_connection.getblock(str(block), 2)
     if len(getblock_result['tx'][0]['vout']) > 1:
         vouts = getblock_result['tx'][0]['vout']
@@ -131,3 +151,4 @@ for k, v in s:
         print(colorize(myscore, 'green'))
     else:
         print(k, v)
+print("")

@@ -110,7 +110,7 @@ def rpcThreads(chain, t0,):
         readabletime = "error"
     if chain != 'KMD':
         if myaddress in notaries:
-            for block in range(64, chain_blocks):
+            for block in range(chain_blocks - 501, chain_blocks):
                 getblock_result = rpc_connection.getblock(str(block), 2)
                 if len(getblock_result['tx'][0]['vout']) > 1:
                     vouts = getblock_result['tx'][0]['vout']
@@ -132,8 +132,8 @@ def rpcThreads(chain, t0,):
     except Exception as e:
         print(e)
     #Build and append list items
-    list = (chain,chain_balance,len(unspents),len(nnutxoset),my_pymt_count,my_ntz_count,readabletime,chain_blocks,blocktime,chain_ntzblk,chain_cncts)
-    alt_list = (chain,generate,chain_diff,chain_balance,len(unspents),chain_blocks,blocktime,chain_ntzblk,chain_cncts,notes)
+    list = (chain,chain_balance,len(unspents),len(nnutxoset),my_pymt_count,my_ntz_count,readabletime,chain_blocks,blocktime,chain_ntzblk,chain_cncts,notes)
+    alt_list = (chain,chain_balance,len(unspents),chain_blocks,blocktime,chain_ntzblk,chain_cncts,generate,chain_diff,notes)
     global tmpList
     tmpList.append(list)
     global alt_tmpList
@@ -167,8 +167,8 @@ def print_balance():
     now = datetime.datetime.now()
     print("Latest stats " + (now.strftime("%Y-%m-%d %H:%M:%S")))
     t0 = time.time()
-    tableCol = ['ASSET','BALANCE','UTXO','nnUTXO','PYMTS','NOTR','NOTR_t','chnBLOX','BLOX_t','NtrzHT','CNCT']
-    alt_tableCol = ['ASSET','GEN','DIFF','BALANCE','UTXO','chnBLOX','BLOX_t','NtrzHT','CNCT','NOTE']
+    tableCol = ['ASSET','BALANCE','UTXO','nnUTXO','%NTR','NOTR','NOTR_t','chnBLOX','BLOX_t','NtrzHT','CNCT','NOTE']
+    alt_tableCol = ['ASSET','BALANCE','UTXO','chnBLOX','BLOX_t','NtrzHT','CNCT','GEN','DIFF','NOTE']
     #Create the thread loops
     for chain in assetChains:
         process = Thread(target=rpcThreads, args=[chain, t0,])

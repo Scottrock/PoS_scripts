@@ -132,7 +132,7 @@ balance=rpc_connection_sourcechain.getbalance()
 max_per_loop=balance/migrations_amount
 amount = selectRangeFloat(0,max_per_loop,"Amount of funds to send per migration (max: "+str(max_per_loop)+"): ")
 
-addresses = rpc_connection_destinationchain.listaddressgroupings()
+addresses = rpc_connection_sourcechain.listaddressgroupings()
 
 address = addresses[0][0][0]
 print('sending to '+address)
